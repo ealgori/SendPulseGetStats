@@ -6,7 +6,7 @@
 npm install
 ```
 
-## Add secret.json file:
+## Add secrets.json file:
 
 ```
 {
