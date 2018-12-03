@@ -2,7 +2,7 @@ var sendpulse = require("sendpulse-api");
 let converter = require('json-2-csv');
 var fs = require('fs');
 var secrets = JSON.parse(fs.readFileSync('secrets.json', 'utf8'));
-
+const args = require('minimist')(process.argv.slice(2));
 var options = {  //<--- options for json to csv transformation
   delimiter: {
     // wrap: '"', // Double Quote (") character
@@ -22,13 +22,13 @@ sendpulse.init(secrets.API_USER_ID, secrets.API_SECRET, secrets.TOKEN_STORAGE, a
   let has_data = true;
   let counter = 0;
   let campaign_ids = [];
-  let page_size = 100;
-  let limit = 300; // <--- change campaign count there
-  let skip_init=0; // <--- change inin skip there 
-  console.log(`Getting campaign infos...(${skip_init}..${limit})`);
+  let page_size =args.page_size|| 100;
+  let limit = args.count||300; // <--- change campaign count there
+  let skip_init = args.skip||0; // <--- change inin skip there 
+  console.log(`Getting campaign infos...(${skip_init}..${limit+skip_init})`);
   do {
     var data = await new Promise((resolve) => {
-      sendpulse.listCampaigns((result) => resolve(result), page_size, counter * page_size+skip_init);
+      sendpulse.listCampaigns((result) => resolve(result), page_size, counter * page_size + skip_init);
     });
 
     if (!data || data.length === 0 || campaign_ids.length >= limit)
@@ -42,7 +42,7 @@ sendpulse.init(secrets.API_USER_ID, secrets.API_SECRET, secrets.TOKEN_STORAGE, a
   while (has_data)
 
   let progress = 0;
-  let lastProgress=0;
+  let lastProgress = 0;
   let campaign_stats_promises = [];
   console.log("Geting campaing statistics...");
   campaign_ids.forEach(async (id) => {
@@ -50,9 +50,8 @@ sendpulse.init(secrets.API_USER_ID, secrets.API_SECRET, secrets.TOKEN_STORAGE, a
       sendpulse.getCampaignInfo((info) => {
         ++progress;
         let progressProc = Math.round(progress * 100 / campaign_ids.length);
-        if(progressProc-lastProgress>=10)
-        {
-          lastProgress=progressProc;
+        if (progressProc - lastProgress >= 10) {
+          lastProgress = progressProc;
           console.log(progressProc + "%...");
         }
 
@@ -77,10 +76,11 @@ sendpulse.init(secrets.API_USER_ID, secrets.API_SECRET, secrets.TOKEN_STORAGE, a
   });
 
   await Promise.all(campaign_stats_promises).then((stats) => {
-    converter.json2csv(stats, async (err,csv)=>{
+    converter.json2csv(stats, async (err, csv) => {
       if (err) throw err;
-      await fs.writeFile('\campaign.csv', csv, (err)=>{if(err)console.log(err);})
-      console.log(csv);
+      let fileName = `Campaign(${skip_init}..${limit+skip_init}).csv`;
+      await fs.writeFile(fileName, csv, (err) => { if (err) console.log(err); else console.log(`saved to ${fileName}`); })
+
     }, options)
   }
   );
