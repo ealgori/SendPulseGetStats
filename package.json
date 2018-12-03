@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "json-2-csv": "^2.4.0",
+    "npm": "^6.4.1",
     "sendpulse-api": "^1.1.0"
   }
 }

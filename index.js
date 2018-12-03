@@ -3,7 +3,7 @@ let converter = require('json-2-csv');
 var fs = require('fs');
 var secrets = JSON.parse(fs.readFileSync('secrets.json', 'utf8'));
 
-var options = {
+var options = {  //<--- options for json to csv transformation
   delimiter: {
     // wrap: '"', // Double Quote (") character
     field: ';', // Comma field delimiter
@@ -16,69 +16,72 @@ var options = {
   trimFieldValues: false,
 };
 
-var capmaignPromises = [];
-
-
-
 sendpulse.init(secrets.API_USER_ID, secrets.API_SECRET, secrets.TOKEN_STORAGE, async (token) => {
   console.log('your token: ' + token)
 
-
-  var listCampaign = (data) => {
-    data.forEach((elem) => {
-      capmaignPromises.push(new Promise((resolve, reject) => {
-        sendpulse.getCampaignInfo(function (info) {
-          resolve(info);
-        }, elem.id);
-      }));
+  let has_data = true;
+  let counter = 0;
+  let campaign_ids = [];
+  let page_size = 100;
+  let limit = 300; // <--- change campaign count there
+  let skip_init=0; // <--- change inin skip there 
+  console.log(`Getting campaign infos...(${skip_init}..${limit})`);
+  do {
+    var data = await new Promise((resolve) => {
+      sendpulse.listCampaigns((result) => resolve(result), page_size, counter * page_size+skip_init);
     });
 
-  };
-
-  for (let i = 0; i < 1; i++) {
-    await (new Promise((res, rej) => {
-      sendpulse.listCampaigns((result) => {
-        listCampaign(result);
-        res();
-      },
-      100, // count to get (max 100)
-      i * 100 // count to skip
-      );
-    }))
-
+    if (!data || data.length === 0 || campaign_ids.length >= limit)
+      has_data = false;
+    else {
+      campaign_ids = campaign_ids.concat(data.map(c => c.id));
+      ++counter;
+      console.log(campaign_ids.length);
+    }
   }
+  while (has_data)
 
+  let progress = 0;
+  let lastProgress=0;
+  let campaign_stats_promises = [];
+  console.log("Geting campaing statistics...");
+  campaign_ids.forEach(async (id) => {
+    campaign_stats_promises.push(new Promise((resolve) => {
+      sendpulse.getCampaignInfo((info) => {
+        ++progress;
+        let progressProc = Math.round(progress * 100 / campaign_ids.length);
+        if(progressProc-lastProgress>=10)
+        {
+          lastProgress=progressProc;
+          console.log(progressProc + "%...");
+        }
 
-  
-    Promise.all(capmaignPromises).then((results) => {
-      var json2csvCallback = async (err, csv) => {
-        if (err) throw err;
-        await fs.writeFile('\campaign.csv', csv)
-        console.log(csv);
-      }
-      var stats = results.map(s => {
-        var stcs = s.statistics;
-        if (!stcs)
-          return {
-            name: s.name,
-            subject: s.message.subject,
-            send_date: s.send_date,
-            send: 0,
-            delivered: 0,
-            opened: 0,
-          };
-        var send = stcs.find(ss => ss.code === 1);
-        var delivered = stcs.find(ss => ss.code === 2);
-        var opened = stcs.find(ss => ss.code === 3);
-        return {
-          name: s.name,
-          subject: s.message.subject,
-          send_date: s.send_date,
+        var stcs = info.statistics;
+        let stat = {};
+        var send = stcs ? stcs.find(ss => ss.code === 1) : undefined;
+        var delivered = stcs ? stcs.find(ss => ss.code === 2) : undefined;
+        var opened = stcs ? stcs.find(ss => ss.code === 3) : undefined;
+        stat = {
+          name: info.name,
+          subject: info.message.subject,
+          send_date: info.send_date,
           send: send ? send.count : 0,
           delivered: delivered ? delivered.count : 0,
           opened: opened ? opened.count : 0,
         };
-      });
-      converter.json2csv(stats, json2csvCallback, options);
-    });
+
+        return resolve(stat);
+      },
+        id)
+    }))
+  });
+
+  await Promise.all(campaign_stats_promises).then((stats) => {
+    converter.json2csv(stats, async (err,csv)=>{
+      if (err) throw err;
+      await fs.writeFile('\campaign.csv', csv, (err)=>{if(err)console.log(err);})
+      console.log(csv);
+    }, options)
+  }
+  );
 });
