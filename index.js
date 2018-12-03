@@ -58,5 +58,5 @@ sendpulse.init(secrets.API_USER_ID, secrets.API_SECRET, secrets.TOKEN_STORAGE, f
     });
   };
 
-  sendpulse.listCampaigns(listCampaign,10);
+  sendpulse.listCampaigns(listCampaign);
 });
